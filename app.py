@@ -28,8 +28,8 @@ if uploaded_file and api_key:
     user_question = st.text_input("Ask anything about this document:")
     
     if user_question:
-        llm = ChatGroq(groq_api_key=api_key, model_name="llama-3.3-70b-versatile")
-        prompt = f"Context from document:\n{pdf_text[:6000]}\n\nQuestion: {user_question}\nAnswer clearly:"
+    llm = ChatGroq(model_name="llama-3.3-70b-versatile", groq_api_key=api_key)
+    prompt = f"Context from document:\n{pdf_text[:6000]}\n\nQuestion: {user_question}\nAnswer clearly:"
         
         response = llm.invoke(prompt)
         st.write("### Answer:")
