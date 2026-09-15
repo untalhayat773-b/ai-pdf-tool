@@ -2,7 +2,7 @@ import streamlit as st
 import os
 from PyPDF2 import PdfReader
 from langchain_groq import ChatGroq
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain.chains.question_answering import load_qa_chain
 from langchain.prompts import PromptTemplate
 from langchain.docstore.document import Document
@@ -46,7 +46,7 @@ st.markdown('<div class="main-header">📑 AI Productivity Workspace Pro</div>',
 st.markdown('<div class="sub-header">Your All-in-One Intelligent Document Assistant & Productivity Suite</div>', unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# Sidebar - Configuration & Monetization / Upgrades
+# Sidebar - Configuration & Monetization
 # ---------------------------------------------------------
 st.sidebar.title("⚙️ Workspace Settings")
 
@@ -102,7 +102,7 @@ if uploaded_file is not None:
     # Prepare chunks for processing
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1200, chunk_overlap=150)
     chunks = text_splitter.split_text(text)
-    docs = [Document(page_content=chunk) for chunk in chunks[:12]] # Optimized chunk set for instant speed
+    docs = [Document(page_content=chunk) for chunk in chunks[:12]]
 
     st.markdown("---")
     st.subheader("🛠️ Choose an AI Tool")
@@ -215,6 +215,5 @@ if uploaded_file is not None:
                 st.write(response)
 
 else:
-    # Landing page message when no file is uploaded
     st.info("👆 Please upload a PDF file above to unlock the 7 AI Productivity Tools.")
         
