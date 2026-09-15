@@ -31,9 +31,9 @@ if uploaded_file:
 
         if user_question:
             try:
-                # Using the stable llama3-70b-8192 model string
+                # Active production model on Groq
                 llm = ChatGroq(
-                    model="llama3-70b-8192",
+                    model="llama-3.1-8b-instant",
                     groq_api_key=api_key
                 )
                 prompt = f"Context from document:\n{pdf_text[:6000]}\n\nQuestion: {user_question}"
@@ -45,6 +45,7 @@ if uploaded_file:
                 st.error(f"Error detail: {e}")
 
         os.remove(tmp_path)
+        
         
         
             
