@@ -1,11 +1,6 @@
 import streamlit as st
-import os
 from PyPDF2 import PdfReader
-from langchain_groq import ChatGroq
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain.chains.question_answering import load_qa_chain
-from langchain.prompts import PromptTemplate
-from langchain.docstore.document import Document
+from groq import Groq
 
 # ---------------------------------------------------------
 # Page Configuration & Styling
@@ -17,28 +12,11 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom Styling for Professional Look
 st.markdown("""
 <style>
-    .main-header {
-        font-size: 2.2rem;
-        font-weight: 700;
-        color: #1E293B;
-        text-align: center;
-        margin-bottom: 0.5rem;
-    }
-    .sub-header {
-        font-size: 1rem;
-        color: #64748B;
-        text-align: center;
-        margin-bottom: 2rem;
-    }
-    .stButton>button {
-        width: 100%;
-        border-radius: 8px;
-        height: 2.8rem;
-        font-weight: 600;
-    }
+    .main-header { font-size: 2.2rem; font-weight: 700; color: #1E293B; text-align: center; margin-bottom: 0.5rem; }
+    .sub-header { font-size: 1rem; color: #64748B; text-align: center; margin-bottom: 2rem; }
+    .stButton>button { width: 100%; border-radius: 8px; height: 2.8rem; font-weight: 600; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -46,41 +24,42 @@ st.markdown('<div class="main-header">📑 AI Productivity Workspace Pro</div>',
 st.markdown('<div class="sub-header">Your All-in-One Intelligent Document Assistant & Productivity Suite</div>', unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# Sidebar - Configuration & Monetization
+# Sidebar Configuration
 # ---------------------------------------------------------
 st.sidebar.title("⚙️ Workspace Settings")
+api_key = st.sidebar.text_input("Enter Groq API Key:", type="password")
 
-api_key = st.sidebar.text_input("Enter Groq API Key:", type="password", help="Enter your Groq API key to unlock fast processing.")
-
-# Fallback to Streamlit Secrets
-if not api_key:
-    if "GROQ_API_KEY" in st.secrets:
-        api_key = st.secrets["GROQ_API_KEY"]
+if not api_key and "GROQ_API_KEY" in st.secrets:
+    api_key = st.secrets["GROQ_API_KEY"]
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("👑 Upgrade to Pro Plan")
-st.sidebar.info("Unlock unlimited processing, priority AI speed, and advanced export features.")
+st.sidebar.info("Unlock unlimited processing and priority AI speed.")
 st.sidebar.markdown("[👉 Buy License Key via Lemon Squeezy](https://lemonsqueezy.com)", unsafe_allow_html=True)
 
 if not api_key:
     st.info("👈 Please enter your **Groq API Key** in the sidebar to activate the AI Workspace.")
     st.stop()
 
-# ---------------------------------------------------------
-# Core AI Setup (Using Active Llama-3.1 Model)
-# ---------------------------------------------------------
-try:
-    llm = ChatGroq(
-        groq_api_key=api_key,
-        model_name="llama-3.1-8b-instant",
-        temperature=0.3
-    )
-except Exception as e:
-    st.error(f"Error initializing Groq API: {str(e)}")
-    st.stop()
+# Initialize Direct Groq Client
+client = Groq(api_key=api_key)
+
+def ask_groq(prompt_text, context_text):
+    try:
+        response = client.chat.completions.create(
+            messages=[
+                {"role": "system", "content": "You are an expert AI assistant. Answer accurately based on context. Support Urdu and English natively."},
+                {"role": "user", "content": f"Context:\n{context_text[:12000]}\n\nTask/Question:\n{prompt_text}"}
+            ],
+            model="llama-3.1-8b-instant",
+            temperature=0.3,
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        return f"Error: {str(e)}"
 
 # ---------------------------------------------------------
-# Main Application Logic
+# Main Logic
 # ---------------------------------------------------------
 uploaded_file = st.file_uploader("📂 Upload your PDF Document to get started", type=["pdf"])
 
@@ -94,126 +73,77 @@ if uploaded_file is not None:
                 text += extracted
 
     if not text.strip():
-        st.error("Could not extract readable text from this PDF. Please make sure it's not a scanned image-only PDF.")
+        st.error("Could not extract text. Make sure it is not a scanned image PDF.")
         st.stop()
 
     st.success(f"✅ Document Loaded Successfully! ({len(pdf_reader.pages)} Pages Processed)")
 
-    # Prepare chunks for processing
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1200, chunk_overlap=150)
-    chunks = text_splitter.split_text(text)
-    docs = [Document(page_content=chunk) for chunk in chunks[:12]]
-
     st.markdown("---")
     st.subheader("🛠️ Choose an AI Tool")
 
-    # 7 Integrated Tools in Tabs
     tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
-        "💬 Chat Q&A", 
-        "📝 Summarizer", 
-        "📌 Key Highlights", 
-        "🌐 Translator", 
-        "❓ Quiz Generator", 
-        "📊 Executive Brief", 
-        "🔍 Keyword Extractor"
+        "💬 Chat Q&A", "📝 Summarizer", "📌 Key Highlights", 
+        "🌐 Translator", "❓ Quiz Generator", "📊 Executive Brief", "🔍 Keyword Extractor"
     ])
 
-    # Tool 1: Interactive Chat Q&A
+    # 1. Chat
     with tab1:
         st.markdown("### 💬 Ask Anything About Your Document")
-        user_question = st.text_input("Type your question here (Supports English, Urdu, etc.):", key="q1")
-        if st.button("Get Answer", key="btn1") and user_question:
-            with st.spinner("Searching document for answers..."):
-                prompt_template = """
-                Answer the question accurately based on the provided context. 
-                If the answer is not in the context, say "Answer not found in the document".
-                Respond in the exact same language as the user's question (e.g. answer in Urdu if asked in Urdu).
+        user_q = st.text_input("Type your question here (Supports Urdu & English):")
+        if st.button("Get Answer", key="btn1") and user_q:
+            with st.spinner("Analyzing..."):
+                res = ask_groq(f"Answer this in the same language as asked: {user_q}", text)
+                st.write(res)
 
-                Context:\n{context}\n
-                Question:\n{question}\n
-                Answer:
-                """
-                prompt = PromptTemplate(template=prompt_template, input_variables=["context", "question"])
-                chain = load_qa_chain(llm, chain_type="stuff", prompt=prompt)
-                response = chain.run(input_documents=docs, question=user_question)
-                st.markdown("#### **AI Response:**")
-                st.write(response)
-
-    # Tool 2: Document Summarizer
+    # 2. Summarizer
     with tab2:
-        st.markdown("### 📝 Generate Complete Summary")
-        summary_type = st.radio("Select Summary Length:", ["Brief (Short)", "Detailed (Comprehensive)"])
+        st.markdown("### 📝 Summary Generator")
+        s_type = st.radio("Select Summary Type:", ["Short Brief", "Detailed Summary"])
         if st.button("Generate Summary", key="btn2"):
-            with st.spinner("Summarizing document..."):
-                prompt_template = f"Provide a {summary_type} summary of the document context below:\nContext:\n{{context}}\nSummary:"
-                prompt = PromptTemplate(template=prompt_template, input_variables=["context"])
-                chain = load_qa_chain(llm, chain_type="stuff", prompt=prompt)
-                response = chain.run(input_documents=docs, question="Summarize document")
-                st.markdown("#### **Summary Result:**")
-                st.write(response)
+            with st.spinner("Summarizing..."):
+                res = ask_groq(f"Provide a {s_type} of this document.", text)
+                st.write(res)
 
-    # Tool 3: Key Bullet Highlights
+    # 3. Highlights
     with tab3:
-        st.markdown("### 📌 Important Takeaways & Highlights")
-        if st.button("Extract Key Points", key="btn3"):
-            with st.spinner("Extracting top takeaways..."):
-                prompt_template = "Extract 5 to 10 key actionable insights and bullet points from the text:\nContext:\n{context}\nHighlights:"
-                prompt = PromptTemplate(template=prompt_template, input_variables=["context"])
-                chain = load_qa_chain(llm, chain_type="stuff", prompt=prompt)
-                response = chain.run(input_documents=docs, question="Extract key points")
-                st.markdown("#### **Key Bullet Points:**")
-                st.write(response)
+        st.markdown("### 📌 Important Takeaways")
+        if st.button("Extract Highlights", key="btn3"):
+            with st.spinner("Extracting..."):
+                res = ask_groq("Extract top 5-10 bullet key takeaways.", text)
+                st.write(res)
 
-    # Tool 4: Multilingual Translator
+    # 4. Translator
     with tab4:
         st.markdown("### 🌐 Translate Document Insights")
-        target_lang = st.selectbox("Select Target Language:", ["Urdu", "Spanish", "French", "German", "Arabic", "Hindi"])
+        target_lang = st.selectbox("Target Language:", ["Urdu", "Spanish", "French", "German", "Arabic", "Hindi"])
         if st.button("Translate Summary", key="btn4"):
-            with st.spinner(f"Translating into {target_lang}..."):
-                prompt_template = f"Summarize and translate the following context directly into {target_lang}:\nContext:\n{{context}}\nTranslation:"
-                prompt = PromptTemplate(template=prompt_template, input_variables=["context"])
-                chain = load_qa_chain(llm, chain_type="stuff", prompt=prompt)
-                response = chain.run(input_documents=docs, question=f"Translate into {target_lang}")
-                st.markdown(f"#### **Translation ({target_lang}):**")
-                st.write(response)
+            with st.spinner("Translating..."):
+                res = ask_groq(f"Summarize and translate directly into {target_lang}.", text)
+                st.write(res)
 
-    # Tool 5: Quiz & Test Generator
+    # 5. Quiz
     with tab5:
-        st.markdown("### ❓ Multiple Choice Quiz Generator")
-        num_q = st.slider("Number of Questions:", 3, 10, 5)
+        st.markdown("### ❓ Multiple Choice Quiz")
         if st.button("Generate Quiz", key="btn5"):
-            with st.spinner("Creating quiz questions..."):
-                prompt_template = f"Create {num_q} multiple choice questions (MCQs) with 4 options each and include correct answers at the end:\nContext:\n{{context}}\nQuiz:"
-                prompt = PromptTemplate(template=prompt_template, input_variables=["context"])
-                chain = load_qa_chain(llm, chain_type="stuff", prompt=prompt)
-                response = chain.run(input_documents=docs, question="Generate quiz")
-                st.markdown("#### **Generated Quiz:**")
-                st.write(response)
+            with st.spinner("Creating Quiz..."):
+                res = ask_groq("Create 5 MCQs with 4 options and answers at the end.", text)
+                st.write(res)
 
-    # Tool 6: Executive Briefing
+    # 6. Brief
     with tab6:
         st.markdown("### 📊 Executive Business Brief")
         if st.button("Generate Executive Brief", key="btn6"):
-            with st.spinner("Compiling executive brief..."):
-                prompt_template = "Write a formal Executive Brief containing: 1. Core Problem/Topic, 2. Key Findings, 3. Strategic Conclusion.\nContext:\n{context}\nExecutive Brief:"
-                prompt = PromptTemplate(template=prompt_template, input_variables=["context"])
-                chain = load_qa_chain(llm, chain_type="stuff", prompt=prompt)
-                response = chain.run(input_documents=docs, question="Generate executive brief")
-                st.markdown("#### **Executive Briefing:**")
-                st.write(response)
+            with st.spinner("Generating..."):
+                res = ask_groq("Write an Executive Brief: 1. Main Problem, 2. Key Findings, 3. Conclusion.", text)
+                st.write(res)
 
-    # Tool 7: Keyword & Term Extractor
+    # 7. Keywords
     with tab7:
-        st.markdown("### 🔍 Extract Key Technical Terms & Concepts")
+        st.markdown("### 🔍 Terminology Extractor")
         if st.button("Extract Keywords", key="btn7"):
-            with st.spinner("Extracting important terminology..."):
-                prompt_template = "Identify top 10 core technical terms/keywords from the text and provide a 1-sentence definition for each:\nContext:\n{context}\nKeywords:"
-                prompt = PromptTemplate(template=prompt_template, input_variables=["context"])
-                chain = load_qa_chain(llm, chain_type="stuff", prompt=prompt)
-                response = chain.run(input_documents=docs, question="Extract keywords")
-                st.markdown("#### **Key Terms & Definitions:**")
-                st.write(response)
-
+            with st.spinner("Extracting..."):
+                res = ask_groq("Extract top 10 technical keywords with 1-line definitions.", text)
+                st.write(res)
 else:
-    st.info("👆 Please upload a PDF file above to unlock the 7 AI Productivity Tools.")
-        
+    st.info("👆 Please upload a PDF file above to unlock the tools.")
+    
