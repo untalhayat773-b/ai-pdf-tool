@@ -30,12 +30,12 @@ if uploaded_file:
 
         if user_question:
             try:
-                # Direct Groq SDK Call (No 404 Model Errors)
+                # Active production model string on Groq
                 client = Groq(api_key=api_key)
                 prompt = f"Context from document:\n{pdf_text[:6000]}\n\nQuestion: {user_question}"
                 
                 completion = client.chat.completions.create(
-                    model="llama3-8b-8192",
+                    model="llama-3.1-8b-instant",
                     messages=[{"role": "user", "content": prompt}]
                 )
                 
@@ -45,4 +45,5 @@ if uploaded_file:
                 st.error(f"Error detail: {e}")
 
         os.remove(tmp_path)
+
         
