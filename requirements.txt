@@ -1,9 +1,9 @@
 streamlit
-langchain-community
-pypdf
-docx2txt
-pandas
-groq
+langchain-groq
+langchain
+PyPDF2
+requests
+
 
 
 
