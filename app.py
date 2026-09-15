@@ -7,18 +7,16 @@ import os
 st.set_page_config(page_title="AI PDF Assistant")
 st.title("📄 AI PDF Research Assistant")
 
-# Sidebar for API Key
-api_key = st.sidebar.text_input("Enter Groq API Key:", type="password")
+# Fetch API key from Secrets
+groq_api_key = st.secrets["GROQ_API_KEY"]
 
 uploaded_file = st.file_uploader("Upload a PDF document", type=["pdf"])
 
-if uploaded_file and api_key:
-    # Save uploaded file temporarily
+if uploaded_file:
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
         tmp_file.write(uploaded_file.read())
         tmp_path = tmp_file.name
 
-    # Load PDF text
     loader = PyPDFLoader(tmp_path)
     docs = loader.load()
     pdf_text = "\n".join([doc.page_content for doc in docs])
@@ -28,7 +26,7 @@ if uploaded_file and api_key:
     user_question = st.text_input("Ask anything about the PDF:")
 
     if user_question:
-        llm = ChatGroq(model_name="llama-3.3-70b-versatile", groq_api_key=api_key)
+        llm = ChatGroq(model_name="llama-3.3-70b-versatile", groq_api_key=groq_api_key)
         prompt = f"Context from document:\n{pdf_text[:6000]}\n\nQuestion: {user_question}"
         
         response = llm.invoke(prompt)
@@ -36,4 +34,5 @@ if uploaded_file and api_key:
         st.write(response.content)
 
     os.remove(tmp_path)
+    
     
