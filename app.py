@@ -2,11 +2,12 @@ import streamlit as st
 import tempfile
 import os
 from langchain_community.document_loaders import PyPDFLoader
-from langchain_groq import ChatGroq
+from groq import Groq
 
 st.set_page_config(page_title="AI PDF Assistant")
 st.title("📄 AI PDF Research Assistant")
 
+# Fetch API Key from Streamlit Secrets
 api_key = st.secrets.get("GROQ_API_KEY")
 
 uploaded_file = st.file_uploader("Upload a PDF document", type=["pdf"])
@@ -28,32 +29,20 @@ if uploaded_file:
         user_question = st.text_input("Ask anything about the PDF:")
 
         if user_question:
-            # Active official model IDs with fallback loop
-            models_to_try = [
-                "meta-llama/llama-3.1-8b-instant",
-                "llama-3.3-70b-versatile"
-            ]
-            
-            response = None
-            last_error = None
-
-            for model_id in models_to_try:
-                try:
-                    llm = ChatGroq(
-                        model=model_id,
-                        groq_api_key=api_key
-                    )
-                    prompt = f"Context from document:\n{pdf_text[:6000]}\n\nQuestion: {user_question}"
-                    response = llm.invoke(prompt)
-                    break
-                except Exception as e:
-                    last_error = e
-
-            if response:
+            try:
+                # Direct Groq SDK Call (No 404 Model Errors)
+                client = Groq(api_key=api_key)
+                prompt = f"Context from document:\n{pdf_text[:6000]}\n\nQuestion: {user_question}"
+                
+                completion = client.chat.completions.create(
+                    model="llama3-8b-8192",
+                    messages=[{"role": "user", "content": prompt}]
+                )
+                
                 st.write("### Answer:")
-                st.write(response.content)
-            else:
-                st.error(f"Failed to query model: {last_error}")
+                st.write(completion.choices[0].message.content)
+            except Exception as e:
+                st.error(f"Error detail: {e}")
 
         os.remove(tmp_path)
         
