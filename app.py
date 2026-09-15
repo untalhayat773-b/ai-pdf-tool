@@ -7,16 +7,18 @@ import os
 st.set_page_config(page_title="AI PDF Assistant")
 st.title("📄 AI PDF Research Assistant")
 
-# Fetch API key from Secrets
+# Auto-fetch API key from Streamlit Secrets
 groq_api_key = st.secrets["GROQ_API_KEY"]
 
 uploaded_file = st.file_uploader("Upload a PDF document", type=["pdf"])
 
 if uploaded_file:
+    # Save uploaded file temporarily
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
         tmp_file.write(uploaded_file.read())
         tmp_path = tmp_file.name
 
+    # Load PDF text
     loader = PyPDFLoader(tmp_path)
     docs = loader.load()
     pdf_text = "\n".join([doc.page_content for doc in docs])
