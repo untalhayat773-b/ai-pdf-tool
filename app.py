@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import time
+import requests
 from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_community.document_loaders import PyPDFLoader
@@ -38,6 +39,26 @@ if "is_subscribed" not in st.session_state:
 # Fetch Hidden Groq API Key from Secrets or Environment
 groq_api_key = st.secrets.get("GROQ_API_KEY", os.getenv("GROQ_API_KEY"))
 
+# Helper Function: Auto Verify License Key via Lemon Squeezy API
+def verify_lemon_squeezy_key(license_key):
+    if license_key == ADMIN_BYPASS_KEY:
+        return True, "Admin Access Granted!"
+        
+    url = "https://api.lemonsqueezy.com/v1/licenses/validate"
+    headers = {"Accept": "application/json"}
+    data = {"license_key": license_key}
+    
+    try:
+        response = requests.post(url, headers=headers, data=data)
+        res_data = response.json()
+        
+        if response.status_code == 200 and res_data.get("valid"):
+            return True, "License Successfully Validated!"
+        else:
+            return False, res_data.get("error", "Invalid or Expired License Key.")
+    except Exception as e:
+        return False, "Verification server unreachable. Try again."
+
 # ==========================================
 # SIDEBAR & MONETIZATION SYSTEM
 # ==========================================
@@ -46,15 +67,20 @@ st.sidebar.title("🔐 Subscription & Status")
 if not st.session_state.is_subscribed:
     st.sidebar.warning(f"Free Trial Usage: {st.session_state.usage_count}/3 Free Runs Used")
     
-    # Activation Key Check
-    user_key = st.sidebar.text_input("Enter Activation Key:", type="password")
+    # Automatic License Key / Admin Key Input
+    user_key = st.sidebar.text_input("Enter License / Pro Key:", type="password", help="Enter key received in email after payment")
     if st.sidebar.button("Activate Pro"):
-        if user_key == ADMIN_BYPASS_KEY:
-            st.session_state.is_subscribed = True
-            st.sidebar.success("Pro Membership Activated!")
-            st.rerun()
+        if user_key:
+            with st.sidebar.spinner("Validating Key..."):
+                is_valid, msg = verify_lemon_squeezy_key(user_key.strip())
+                if is_valid:
+                    st.session_state.is_subscribed = True
+                    st.sidebar.success(msg)
+                    st.rerun()
+                else:
+                    st.sidebar.error(msg)
         else:
-            st.sidebar.error("Invalid Key! Purchase subscription below.")
+            st.sidebar.error("Please enter a key.")
             
     st.sidebar.markdown("---")
     st.sidebar.subheader("⭐ Upgrade to Pro ($5/mo)")
@@ -215,4 +241,3 @@ with tab7:
             chain = prompt | llm
             res = chain.invoke({"text": bi_text})
             st.write(res.content)
-            
