@@ -35,8 +35,8 @@ if "usage_count" not in st.session_state:
 if "is_subscribed" not in st.session_state:
     st.session_state.is_subscribed = False
 
-# GROQ API Key Setup
-groq_api_key = st.sidebar.text_input("Enter Groq API Key:", type="password")
+# Fetch Hidden Groq API Key from Secrets or Environment
+groq_api_key = st.secrets.get("GROQ_API_KEY", os.getenv("GROQ_API_KEY"))
 
 # ==========================================
 # SIDEBAR & MONETIZATION SYSTEM
@@ -81,7 +81,7 @@ st.markdown('<div class="main-header">🚀 AI Productivity Workspace Pro</div>',
 st.markdown('<div class="sub-header">All-in-One AI Suite for Students, Researchers, Lawyers & Professionals</div>', unsafe_allow_html=True)
 
 if not groq_api_key:
-    st.info("👈 Please enter your Groq API Key in the sidebar to start using the tools.")
+    st.error("⚠️ System Service Offline: GROQ_API_KEY is not configured in Streamlit Secrets.")
     st.stop()
 
 llm = ChatGroq(temperature=0.3, groq_api_key=groq_api_key, model_name="llama-3.3-70b-versatile")
@@ -215,4 +215,4 @@ with tab7:
             chain = prompt | llm
             res = chain.invoke({"text": bi_text})
             st.write(res.content)
-    
+            
