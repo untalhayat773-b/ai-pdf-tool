@@ -1,5 +1,6 @@
 streamlit
 langchain-community
-groq
+langchain-groq
 pypdf
+
 
