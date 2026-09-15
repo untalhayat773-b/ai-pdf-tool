@@ -1,243 +1,220 @@
 import streamlit as st
-import pandas as pd
-import time
-import requests
-from langchain_groq import ChatGroq
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_community.document_loaders import PyPDFLoader
-import tempfile
 import os
+from PyPDF2 import PdfReader
+from langchain_groq import ChatGroq
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.chains.question_answering import load_qa_chain
+from langchain.prompts import PromptTemplate
+from langchain.docstore.document import Document
 
-# ==========================================
-# CONFIGURATION & SETUP
-# ==========================================
-PAYMENT_LINK = "https://aiworkspace.lemonsqueezy.com/checkout/buy/8ae9f56d-9fe0-48f1-a1b5-c9"
-ADMIN_BYPASS_KEY = "PDF555"
-
+# ---------------------------------------------------------
+# Page Configuration & Styling
+# ---------------------------------------------------------
 st.set_page_config(
     page_title="AI Productivity Workspace Pro",
-    page_icon="🚀",
+    page_icon="📑",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Custom Styling
+# Custom Styling for Professional Look
 st.markdown("""
-    <style>
-    .main-header {font-size:2.5rem; font-weight:700; color:#1E88E5; text-align:center; margin-bottom:1rem;}
-    .sub-header {font-size:1.1rem; text-align:center; color:#555; margin-bottom:2rem;}
-    .pay-box {background-color:#F0F2F6; padding:1.5rem; border-radius:10px; border-left:5px solid #1E88E5;}
-    </style>
+<style>
+    .main-header {
+        font-size: 2.2rem;
+        font-weight: 700;
+        color: #1E293B;
+        text-align: center;
+        margin-bottom: 0.5rem;
+    }
+    .sub-header {
+        font-size: 1rem;
+        color: #64748B;
+        text-align: center;
+        margin-bottom: 2rem;
+    }
+    .stButton>button {
+        width: 100%;
+        border-radius: 8px;
+        height: 2.8rem;
+        font-weight: 600;
+    }
+</style>
 """, unsafe_allow_html=True)
 
-# Session State Initialization
-if "usage_count" not in st.session_state:
-    st.session_state.usage_count = 0
-if "is_subscribed" not in st.session_state:
-    st.session_state.is_subscribed = False
+st.markdown('<div class="main-header">📑 AI Productivity Workspace Pro</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-header">Your All-in-One Intelligent Document Assistant & Productivity Suite</div>', unsafe_allow_html=True)
 
-# Fetch Hidden Groq API Key from Secrets or Environment
-groq_api_key = st.secrets.get("GROQ_API_KEY", os.getenv("GROQ_API_KEY"))
+# ---------------------------------------------------------
+# Sidebar - Configuration & Monetization / Upgrades
+# ---------------------------------------------------------
+st.sidebar.title("⚙️ Workspace Settings")
 
-# Helper Function: Auto Verify License Key via Lemon Squeezy API
-def verify_lemon_squeezy_key(license_key):
-    if license_key == ADMIN_BYPASS_KEY:
-        return True, "Admin Access Granted!"
-        
-    url = "https://api.lemonsqueezy.com/v1/licenses/validate"
-    headers = {"Accept": "application/json"}
-    data = {"license_key": license_key}
-    
-    try:
-        response = requests.post(url, headers=headers, data=data)
-        res_data = response.json()
-        
-        if response.status_code == 200 and res_data.get("valid"):
-            return True, "License Successfully Validated!"
-        else:
-            return False, res_data.get("error", "Invalid or Expired License Key.")
-    except Exception as e:
-        return False, "Verification server unreachable. Try again."
+api_key = st.sidebar.text_input("Enter Groq API Key:", type="password", help="Enter your Groq API key to unlock fast processing.")
 
-# ==========================================
-# SIDEBAR & MONETIZATION SYSTEM
-# ==========================================
-st.sidebar.title("🔐 Subscription & Status")
+# Fallback to Streamlit Secrets
+if not api_key:
+    if "GROQ_API_KEY" in st.secrets:
+        api_key = st.secrets["GROQ_API_KEY"]
 
-if not st.session_state.is_subscribed:
-    st.sidebar.warning(f"Free Trial Usage: {st.session_state.usage_count}/3 Free Runs Used")
-    
-    # Automatic License Key / Admin Key Input
-    user_key = st.sidebar.text_input("Enter License / Pro Key:", type="password", help="Enter key received in email after payment")
-    if st.sidebar.button("Activate Pro"):
-        if user_key:
-            with st.sidebar.spinner("Validating Key..."):
-                is_valid, msg = verify_lemon_squeezy_key(user_key.strip())
-                if is_valid:
-                    st.session_state.is_subscribed = True
-                    st.sidebar.success(msg)
-                    st.rerun()
-                else:
-                    st.sidebar.error(msg)
-        else:
-            st.sidebar.error("Please enter a key.")
-            
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("⭐ Upgrade to Pro ($5/mo)")
-    st.sidebar.markdown(f"[👉 Click Here to Subscribe]({PAYMENT_LINK})")
-else:
-    st.sidebar.success("🎉 Pro Member Active (Unlimited Access)")
+st.sidebar.markdown("---")
+st.sidebar.subheader("👑 Upgrade to Pro Plan")
+st.sidebar.info("Unlock unlimited processing, priority AI speed, and advanced export features.")
+st.sidebar.markdown("[👉 Buy License Key via Lemon Squeezy](https://lemonsqueezy.com)", unsafe_allow_html=True)
 
-# Helper function for usage restriction
-def check_access():
-    if st.session_state.is_subscribed:
-        return True
-    if st.session_state.usage_count < 3:
-        st.session_state.usage_count += 1
-        return True
-    else:
-        st.error("🔒 Free Limit Reached! Upgrade to Pro for $5/month to unlock unlimited access.")
-        st.markdown(f'<div class="pay-box"><h3>Unlock Unlimited AI Productivity Workspace</h3><p>Get full access to all 7 tools with high speed.</p><a href="{PAYMENT_LINK}" target="_blank"><button style="background-color:#1E88E5; color:white; padding:10px 20px; border:none; border-radius:5px; cursor:pointer; font-size:16px;">Subscribe Now for $5/Mo</button></a></div>', unsafe_allow_html=True)
-        return False
-
-# ==========================================
-# MAIN INTERFACE
-# ==========================================
-st.markdown('<div class="main-header">🚀 AI Productivity Workspace Pro</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-header">All-in-One AI Suite for Students, Researchers, Lawyers & Professionals</div>', unsafe_allow_html=True)
-
-if not groq_api_key:
-    st.error("⚠️ System Service Offline: GROQ_API_KEY is not configured in Streamlit Secrets.")
+if not api_key:
+    st.info("👈 Please enter your **Groq API Key** in the sidebar to activate the AI Workspace.")
     st.stop()
 
-llm = ChatGroq(temperature=0.3, groq_api_key=groq_api_key, model_name="llama-3.3-70b-versatile")
+# ---------------------------------------------------------
+# Core AI Setup (Using Active Llama-3.1 Model)
+# ---------------------------------------------------------
+try:
+    llm = ChatGroq(
+        groq_api_key=api_key,
+        model_name="llama-3.1-8b-instant",
+        temperature=0.3
+    )
+except Exception as e:
+    st.error(f"Error initializing Groq API: {str(e)}")
+    st.stop()
 
-# Tab Layout
-tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
-    "📄 Doc Assistant", 
-    "🎤 Voice Transcriber", 
-    "📊 CSV Analyst", 
-    "⚖️ Legal Auditor", 
-    "✍️ Text Humanizer", 
-    "📝 Quiz Generator",
-    "🌐 Urdu/Eng Assistant"
-])
+# ---------------------------------------------------------
+# Main Application Logic
+# ---------------------------------------------------------
+uploaded_file = st.file_uploader("📂 Upload your PDF Document to get started", type=["pdf"])
 
-# ------------------------------------------
-# TAB 1: Document AI Assistant
-# ------------------------------------------
-with tab1:
-    st.header("📄 PDF/Document Assistant")
-    uploaded_file = st.file_uploader("Upload PDF File", type=["pdf"])
-    query = st.text_input("Ask anything about this document:")
-    
-    if st.button("Analyze Document") and uploaded_file:
-        if check_access():
-            with st.spinner("Processing Document..."):
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
-                    tmp_file.write(uploaded_file.getvalue())
-                    tmp_path = tmp_file.name
-                
-                loader = PyPDFLoader(tmp_path)
-                docs = loader.load()
-                text_content = " ".join([d.page_content for d in docs[:10]])
-                
-                prompt = ChatPromptTemplate.from_template("Document Content: {context}\n\nQuestion: {question}")
-                chain = prompt | llm
-                response = chain.invoke({"context": text_content, "question": query})
-                
-                st.success("Analysis Complete!")
-                st.write(response.content)
-                os.remove(tmp_path)
+if uploaded_file is not None:
+    with st.spinner("Extracting text from PDF..."):
+        pdf_reader = PdfReader(uploaded_file)
+        text = ""
+        for page in pdf_reader.pages:
+            extracted = page.extract_text()
+            if extracted:
+                text += extracted
 
-# ------------------------------------------
-# TAB 2: Voice & Audio Transcriber
-# ------------------------------------------
-with tab2:
-    st.header("🎤 Voice & Audio Summarizer")
-    audio_file = st.file_uploader("Upload Audio File (.mp3, .wav)", type=["mp3", "wav"])
-    
-    if st.button("Transcribe & Summarize") and audio_file:
-        if check_access():
-            st.info("Audio Processing active.")
-            time.sleep(1)
-            st.success("Summary Generated:")
-            st.write("• Key Discussion Points identified.\n• Action items summarized automatically.")
+    if not text.strip():
+        st.error("Could not extract readable text from this PDF. Please make sure it's not a scanned image-only PDF.")
+        st.stop()
 
-# ------------------------------------------
-# TAB 3: CSV Data Analyst
-# ------------------------------------------
-with tab3:
-    st.header("📊 CSV Data Analyst")
-    csv_file = st.file_uploader("Upload CSV Spreadsheet", type=["csv"])
-    
-    if csv_file:
-        df = pd.read_csv(csv_file)
-        st.dataframe(df.head())
+    st.success(f"✅ Document Loaded Successfully! ({len(pdf_reader.pages)} Pages Processed)")
+
+    # Prepare chunks for processing
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1200, chunk_overlap=150)
+    chunks = text_splitter.split_text(text)
+    docs = [Document(page_content=chunk) for chunk in chunks[:12]] # Optimized chunk set for instant speed
+
+    st.markdown("---")
+    st.subheader("🛠️ Choose an AI Tool")
+
+    # 7 Integrated Tools in Tabs
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+        "💬 Chat Q&A", 
+        "📝 Summarizer", 
+        "📌 Key Highlights", 
+        "🌐 Translator", 
+        "❓ Quiz Generator", 
+        "📊 Executive Brief", 
+        "🔍 Keyword Extractor"
+    ])
+
+    # Tool 1: Interactive Chat Q&A
+    with tab1:
+        st.markdown("### 💬 Ask Anything About Your Document")
+        user_question = st.text_input("Type your question here (Supports English, Urdu, etc.):", key="q1")
+        if st.button("Get Answer", key="btn1") and user_question:
+            with st.spinner("Searching document for answers..."):
+                prompt_template = """
+                Answer the question accurately based on the provided context. 
+                If the answer is not in the context, say "Answer not found in the document".
+                Respond in the exact same language as the user's question (e.g. answer in Urdu if asked in Urdu).
+
+                Context:\n{context}\n
+                Question:\n{question}\n
+                Answer:
+                """
+                prompt = PromptTemplate(template=prompt_template, input_variables=["context", "question"])
+                chain = load_qa_chain(llm, chain_type="stuff", prompt=prompt)
+                response = chain.run(input_documents=docs, question=user_question)
+                st.markdown("#### **AI Response:**")
+                st.write(response)
+
+    # Tool 2: Document Summarizer
+    with tab2:
+        st.markdown("### 📝 Generate Complete Summary")
+        summary_type = st.radio("Select Summary Length:", ["Brief (Short)", "Detailed (Comprehensive)"])
+        if st.button("Generate Summary", key="btn2"):
+            with st.spinner("Summarizing document..."):
+                prompt_template = f"Provide a {summary_type} summary of the document context below:\nContext:\n{{context}}\nSummary:"
+                prompt = PromptTemplate(template=prompt_template, input_variables=["context"])
+                chain = load_qa_chain(llm, chain_type="stuff", prompt=prompt)
+                response = chain.run(input_documents=docs, question="Summarize document")
+                st.markdown("#### **Summary Result:**")
+                st.write(response)
+
+    # Tool 3: Key Bullet Highlights
+    with tab3:
+        st.markdown("### 📌 Important Takeaways & Highlights")
+        if st.button("Extract Key Points", key="btn3"):
+            with st.spinner("Extracting top takeaways..."):
+                prompt_template = "Extract 5 to 10 key actionable insights and bullet points from the text:\nContext:\n{context}\nHighlights:"
+                prompt = PromptTemplate(template=prompt_template, input_variables=["context"])
+                chain = load_qa_chain(llm, chain_type="stuff", prompt=prompt)
+                response = chain.run(input_documents=docs, question="Extract key points")
+                st.markdown("#### **Key Bullet Points:**")
+                st.write(response)
+
+    # Tool 4: Multilingual Translator
+    with tab4:
+        st.markdown("### 🌐 Translate Document Insights")
+        target_lang = st.selectbox("Select Target Language:", ["Urdu", "Spanish", "French", "German", "Arabic", "Hindi"])
+        if st.button("Translate Summary", key="btn4"):
+            with st.spinner(f"Translating into {target_lang}..."):
+                prompt_template = f"Summarize and translate the following context directly into {target_lang}:\nContext:\n{{context}}\nTranslation:"
+                prompt = PromptTemplate(template=prompt_template, input_variables=["context"])
+                chain = load_qa_chain(llm, chain_type="stuff", prompt=prompt)
+                response = chain.run(input_documents=docs, question=f"Translate into {target_lang}")
+                st.markdown(f"#### **Translation ({target_lang}):**")
+                st.write(response)
+
+    # Tool 5: Quiz & Test Generator
+    with tab5:
+        st.markdown("### ❓ Multiple Choice Quiz Generator")
+        num_q = st.slider("Number of Questions:", 3, 10, 5)
+        if st.button("Generate Quiz", key="btn5"):
+            with st.spinner("Creating quiz questions..."):
+                prompt_template = f"Create {num_q} multiple choice questions (MCQs) with 4 options each and include correct answers at the end:\nContext:\n{{context}}\nQuiz:"
+                prompt = PromptTemplate(template=prompt_template, input_variables=["context"])
+                chain = load_qa_chain(llm, chain_type="stuff", prompt=prompt)
+                response = chain.run(input_documents=docs, question="Generate quiz")
+                st.markdown("#### **Generated Quiz:**")
+                st.write(response)
+
+    # Tool 6: Executive Briefing
+    with tab6:
+        st.markdown("### 📊 Executive Business Brief")
+        if st.button("Generate Executive Brief", key="btn6"):
+            with st.spinner("Compiling executive brief..."):
+                prompt_template = "Write a formal Executive Brief containing: 1. Core Problem/Topic, 2. Key Findings, 3. Strategic Conclusion.\nContext:\n{context}\nExecutive Brief:"
+                prompt = PromptTemplate(template=prompt_template, input_variables=["context"])
+                chain = load_qa_chain(llm, chain_type="stuff", prompt=prompt)
+                response = chain.run(input_documents=docs, question="Generate executive brief")
+                st.markdown("#### **Executive Briefing:**")
+                st.write(response)
+
+    # Tool 7: Keyword & Term Extractor
+    with tab7:
+        st.markdown("### 🔍 Extract Key Technical Terms & Concepts")
+        if st.button("Extract Keywords", key="btn7"):
+            with st.spinner("Extracting important terminology..."):
+                prompt_template = "Identify top 10 core technical terms/keywords from the text and provide a 1-sentence definition for each:\nContext:\n{context}\nKeywords:"
+                prompt = PromptTemplate(template=prompt_template, input_variables=["context"])
+                chain = load_qa_chain(llm, chain_type="stuff", prompt=prompt)
+                response = chain.run(input_documents=docs, question="Extract keywords")
+                st.markdown("#### **Key Terms & Definitions:**")
+                st.write(response)
+
+else:
+    # Landing page message when no file is uploaded
+    st.info("👆 Please upload a PDF file above to unlock the 7 AI Productivity Tools.")
         
-        data_query = st.text_input("What insights do you want from this data?")
-        if st.button("Analyze Data"):
-            if check_access():
-                summary = f"Columns: {list(df.columns)}, Shape: {df.shape}, Sample Data: {df.head(3).to_dict()}"
-                prompt = ChatPromptTemplate.from_template("Analyze this Dataset Summary: {summary}\nUser Question: {query}")
-                chain = prompt | llm
-                res = chain.invoke({"summary": summary, "query": data_query})
-                st.write(res.content)
-
-# ------------------------------------------
-# TAB 4: Legal Contract Auditor
-# ------------------------------------------
-with tab4:
-    st.header("⚖️ Legal Contract Auditor")
-    contract_text = st.text_area("Paste Legal Contract Clause or Agreement:", height=200)
-    
-    if st.button("Audit Contract") and contract_text:
-        if check_access():
-            prompt = ChatPromptTemplate.from_template("Audit this legal text for hidden risks, liabilities, penalties, and obligations: {text}")
-            chain = prompt | llm
-            res = chain.invoke({"text": contract_text})
-            st.warning("⚠️ Risk & Compliance Assessment:")
-            st.write(res.content)
-
-# ------------------------------------------
-# TAB 5: AI Text Humanizer
-# ------------------------------------------
-with tab5:
-    st.header("✍️ AI Text Humanizer")
-    ai_text = st.text_area("Paste AI-Generated Text Here:", height=150)
-    
-    if st.button("Humanize Text") and ai_text:
-        if check_access():
-            prompt = ChatPromptTemplate.from_template("Rewrite the following text to sound completely natural, human, engaging, and clear, removing robotic patterns: {text}")
-            chain = prompt | llm
-            res = chain.invoke({"text": ai_text})
-            st.success("Humanized Version:")
-            st.write(res.content)
-
-# ------------------------------------------
-# TAB 6: Auto Quiz & Flashcards Generator
-# ------------------------------------------
-with tab6:
-    st.header("📝 Quiz & Flashcard Generator")
-    study_material = st.text_area("Paste Study Notes / Text:", height=150)
-    
-    if st.button("Generate Quiz (5 MCQs)") and study_material:
-        if check_access():
-            prompt = ChatPromptTemplate.from_template("Generate 5 multiple-choice questions (MCQs) with correct answers based on this text: {text}")
-            chain = prompt | llm
-            res = chain.invoke({"text": study_material})
-            st.write(res.content)
-
-# ------------------------------------------
-# TAB 7: Urdu/English Bilingual Assistant
-# ------------------------------------------
-with tab7:
-    st.header("🌐 Urdu / English Bilingual Assistant")
-    bi_text = st.text_area("Type in English or Roman Urdu / Input Text:")
-    
-    if st.button("Translate & Explain"):
-        if check_access():
-            prompt = ChatPromptTemplate.from_template("Translate and explain the following content in both clear English and proper Urdu script: {text}")
-            chain = prompt | llm
-            res = chain.invoke({"text": bi_text})
-            st.write(res.content)
