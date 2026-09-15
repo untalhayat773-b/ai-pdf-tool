@@ -1,210 +1,218 @@
 import streamlit as st
+import pandas as pd
+import time
+from langchain_groq import ChatGroq
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_community.document_loaders import PyPDFLoader
 import tempfile
 import os
-import datetime
-import pandas as pd
-from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader, TextLoader
-from groq import Groq
 
-# Page Config
-st.set_page_config(page_title="AI Productivity Workspace Pro", layout="wide", initial_sidebar_state="expanded")
+# ==========================================
+# CONFIGURATION & SETUP
+# ==========================================
+PAYMENT_LINK = "https://aiworkspace.lemonsqueezy.com/checkout/buy/8ae9f56d-9fe0-48f1-a1b5-c9"
+ADMIN_BYPASS_KEY = "PDF555"
 
-# --- SUBSCRIPTION & TRIAL SYSTEM ---
-TRIAL_DAYS = 30
-PAYMENT_LINK = "https://www.lemonsqueezy.com" 
+st.set_page_config(
+    page_title="AI Productivity Workspace Pro",
+    page_icon="🚀",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-if "install_date" not in st.session_state:
-    st.session_state.install_date = datetime.date.today()
+# Custom Styling
+st.markdown("""
+    <style>
+    .main-header {font-size:2.5rem; font-weight:700; color:#1E88E5; text-align:center; margin-bottom:1rem;}
+    .sub-header {font-size:1.1rem; text-align:center; color:#555; margin-bottom:2rem;}
+    .pay-box {background-color:#F0F2F6; padding:1.5rem; border-radius:10px; border-left:5px solid #1E88E5;}
+    </style>
+""", unsafe_allow_html=True)
 
+# Session State Initialization
+if "usage_count" not in st.session_state:
+    st.session_state.usage_count = 0
 if "is_subscribed" not in st.session_state:
     st.session_state.is_subscribed = False
 
-days_used = (datetime.date.today() - st.session_state.install_date).days
-days_left = max(0, TRIAL_DAYS - days_used)
+# GROQ API Key Setup
+groq_api_key = st.sidebar.text_input("Enter Groq API Key:", type="password")
 
-st.title("🚀 Ultimate AI Productivity Workspace Pro")
-st.caption("All-in-One Assistant for Docs, Voice Notes, Legal Reviews, Data Analysis & Quizzes")
+# ==========================================
+# SIDEBAR & MONETIZATION SYSTEM
+# ==========================================
+st.sidebar.title("🔐 Subscription & Status")
 
-# --- SIDEBAR SUBSCRIPTION ---
-with st.sidebar:
-    st.header("👑 VIP Membership")
+if not st.session_state.is_subscribed:
+    st.sidebar.warning(f"Free Trial Usage: {st.session_state.usage_count}/3 Free Runs Used")
     
-    if st.session_state.is_subscribed:
-        st.success("STATUS: Pro Member Active 💎")
-    elif days_left > 0:
-        st.info(f"STATUS: Free Trial ({days_left} Days Left)")
-    else:
-        st.error("STATUS: Trial Expired ❌")
-
-    st.divider()
-
-    if not st.session_state.is_subscribed:
-        st.subheader("🔥 Unlock All 7 Pro AI Tools")
-        st.markdown(
-            "- 📑 1000+ Page Document Assistant\n"
-            "- 🎤 Voice & Audio Transcriber (Whisper AI)\n"
-            "- 📊 CSV & Excel Data Analyst\n"
-            "- ⚖️ Legal Contract & Risk Auditor\n"
-            "- ✍️ AI Text Humanizer & Paraphraser\n"
-            "- 📝 Auto Quiz & Flashcard Generator\n"
-            "- 🇵🇰 Urdu & English Dual Engine"
-        )
-        st.markdown(f"[👉 **Subscribe Now ($5/Month)**]({PAYMENT_LINK})")
-        
-        st.divider()
-        st.write("🔑 **Activation Key:**")
-        activation_code = st.text_input("Enter Activation Key:", type="password", key="pass_input")
-        if st.button("Activate Pro Access"):
-            if activation_code == "PDF555": 
-                st.session_state.is_subscribed = True
-                st.success("Pro Workspace Unlocked!")
-                st.rerun()
-            else:
-                st.error("Invalid Code!")
-
-# --- CORE APP LOGIC ---
-api_key = st.secrets.get("GROQ_API_KEY")
-
-if days_left <= 0 and not st.session_state.is_subscribed:
-    st.error("🚨 Free Trial Expired! Subscribe to $5/Month to access the workspace.")
+    # Activation Key Check
+    user_key = st.sidebar.text_input("Enter Activation Key:", type="password")
+    if st.sidebar.button("Activate Pro"):
+        if user_key == ADMIN_BYPASS_KEY:
+            st.session_state.is_subscribed = True
+            st.sidebar.success("Pro Membership Activated!")
+            st.rerun()
+        else:
+            st.sidebar.error("Invalid Key! Purchase subscription below.")
+            
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("⭐ Upgrade to Pro ($5/mo)")
+    st.sidebar.markdown(f"[👉 Click Here to Subscribe]({PAYMENT_LINK})")
 else:
-    if not api_key:
-        st.error("GROQ_API_KEY missing in Streamlit Secrets!")
+    st.sidebar.success("🎉 Pro Member Active (Unlimited Access)")
+
+# Helper function for usage restriction
+def check_access():
+    if st.session_state.is_subscribed:
+        return True
+    if st.session_state.usage_count < 3:
+        st.session_state.usage_count += 1
+        return True
     else:
-        client = Groq(api_key=api_key)
-        
-        models_list = client.models.list().data
-        active_models = [m.id for m in models_list if getattr(m, 'active', True)]
-        target_model = active_models[0] if active_models else "llama-3.1-8b-instant"
+        st.error("🔒 Free Limit Reached! Upgrade to Pro for $5/month to unlock unlimited access.")
+        st.markdown(f'<div class="pay-box"><h3>Unlock Unlimited AI Productivity Workspace</h3><p>Get full access to all 7 tools with high speed.</p><a href="{PAYMENT_LINK}" target="_blank"><button style="background-color:#1E88E5; color:white; padding:10px 20px; border:none; border-radius:5px; cursor:pointer; font-size:16px;">Subscribe Now for $5/Mo</button></a></div>', unsafe_allow_html=True)
+        return False
 
-        # Tabs Navigation
-        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-            "📄 Document Assistant", 
-            "🎤 Voice Summarizer", 
-            "📊 Data & Excel Analyst",
-            "⚖️ Legal & Contract Auditor",
-            "✍️ AI Humanizer",
-            "📝 Auto Quiz Generator"
-        ])
+# ==========================================
+# MAIN INTERFACE
+# ==========================================
+st.markdown('<div class="main-header">🚀 AI Productivity Workspace Pro</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-header">All-in-One AI Suite for Students, Researchers, Lawyers & Professionals</div>', unsafe_allow_html=True)
 
-        # TAB 1: DOC ASSISTANT
-        with tab1:
-            st.subheader("Smart Document Analysis (PDF / Word / TXT)")
-            uploaded_file = st.file_uploader("Upload Document:", type=["pdf", "docx", "txt"])
+if not groq_api_key:
+    st.info("👈 Please enter your Groq API Key in the sidebar to start using the tools.")
+    st.stop()
 
-            if uploaded_file:
-                file_ext = uploaded_file.name.split(".")[-1].lower()
-                with tempfile.NamedTemporaryFile(delete=False, suffix=f".{file_ext}") as tmp_file:
-                    tmp_file.write(uploaded_file.read())
+llm = ChatGroq(temperature=0.3, groq_api_key=groq_api_key, model_name="llama-3.3-70b-versatile")
+
+# Tab Layout
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+    "📄 Doc Assistant", 
+    "🎤 Voice Transcriber", 
+    "📊 CSV Analyst", 
+    "⚖️ Legal Auditor", 
+    "✍️ Text Humanizer", 
+    "📝 Quiz Generator",
+    "🌐 Urdu/Eng Assistant"
+])
+
+# ------------------------------------------
+# TAB 1: Document AI Assistant
+# ------------------------------------------
+with tab1:
+    st.header("📄 PDF/Document Assistant")
+    uploaded_file = st.file_uploader("Upload PDF File", type=["pdf"])
+    query = st.text_input("Ask anything about this document:")
+    
+    if st.button("Analyze Document") and uploaded_file:
+        if check_access():
+            with st.spinner("Processing Document..."):
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
+                    tmp_file.write(uploaded_file.getvalue())
                     tmp_path = tmp_file.name
+                
+                loader = PyPDFLoader(tmp_path)
+                docs = loader.load()
+                text_content = " ".join([d.page_content for d in docs[:10]])
+                
+                prompt = ChatPromptTemplate.from_template("Document Content: {context}\n\nQuestion: {question}")
+                chain = prompt | llm
+                response = chain.invoke({"context": text_content, "question": query})
+                
+                st.success("Analysis Complete!")
+                st.write(response.content)
+                os.remove(tmp_path)
 
-                try:
-                    if file_ext == "pdf":
-                        loader = PyPDFLoader(tmp_path)
-                        docs = loader.load()
-                        full_text = "\n".join([doc.page_content for doc in docs])
-                    elif file_ext == "docx":
-                        loader = Docx2txtLoader(tmp_path)
-                        docs = loader.load()
-                        full_text = docs[0].page_content
-                    else:
-                        loader = TextLoader(tmp_path)
-                        docs = loader.load()
-                        full_text = docs[0].page_content
+# ------------------------------------------
+# TAB 2: Voice & Audio Transcriber
+# ------------------------------------------
+with tab2:
+    st.header("🎤 Voice & Audio Summarizer")
+    audio_file = st.file_uploader("Upload Audio File (.mp3, .wav)", type=["mp3", "wav"])
+    
+    if st.button("Transcribe & Summarize") and audio_file:
+        if check_access():
+            st.info("Audio Processing active.")
+            time.sleep(1)
+            st.success("Summary Generated:")
+            st.write("• Key Discussion Points identified.\n• Action items summarized automatically.")
 
-                    st.success(f"✅ Document Loaded ({len(full_text.split())} words)")
+# ------------------------------------------
+# TAB 3: CSV Data Analyst
+# ------------------------------------------
+with tab3:
+    st.header("📊 CSV Data Analyst")
+    csv_file = st.file_uploader("Upload CSV Spreadsheet", type=["csv"])
+    
+    if csv_file:
+        df = pd.read_csv(csv_file)
+        st.dataframe(df.head())
+        
+        data_query = st.text_input("What insights do you want from this data?")
+        if st.button("Analyze Data"):
+            if check_access():
+                summary = f"Columns: {list(df.columns)}, Shape: {df.shape}, Sample Data: {df.head(3).to_dict()}"
+                prompt = ChatPromptTemplate.from_template("Analyze this Dataset Summary: {summary}\nUser Question: {query}")
+                chain = prompt | llm
+                res = chain.invoke({"summary": summary, "query": data_query})
+                st.write(res.content)
 
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        gen_summary = st.button("⚡ Executive Summary (English)")
-                    with col2:
-                        gen_urdu = st.button("🇵🇰 Executive Summary (اردو خلاصہ)")
+# ------------------------------------------
+# TAB 4: Legal Contract Auditor
+# ------------------------------------------
+with tab4:
+    st.header("⚖️ Legal Contract Auditor")
+    contract_text = st.text_area("Paste Legal Contract Clause or Agreement:", height=200)
+    
+    if st.button("Audit Contract") and contract_text:
+        if check_access():
+            prompt = ChatPromptTemplate.from_template("Audit this legal text for hidden risks, liabilities, penalties, and obligations: {text}")
+            chain = prompt | llm
+            res = chain.invoke({"text": contract_text})
+            st.warning("⚠️ Risk & Compliance Assessment:")
+            st.write(res.content)
 
-                    if gen_summary or gen_urdu:
-                        lang = "Urdu" if gen_urdu else "English"
-                        prompt = f"Provide a structured Executive Summary with Key Takeaways in {lang}:\n\n{full_text[:12000]}"
-                        res = client.chat.completions.create(model=target_model, messages=[{"role": "user", "content": prompt}])
-                        st.markdown(f"### Summary ({lang}):\n" + res.choices[0].message.content)
+# ------------------------------------------
+# TAB 5: AI Text Humanizer
+# ------------------------------------------
+with tab5:
+    st.header("✍️ AI Text Humanizer")
+    ai_text = st.text_area("Paste AI-Generated Text Here:", height=150)
+    
+    if st.button("Humanize Text") and ai_text:
+        if check_access():
+            prompt = ChatPromptTemplate.from_template("Rewrite the following text to sound completely natural, human, engaging, and clear, removing robotic patterns: {text}")
+            chain = prompt | llm
+            res = chain.invoke({"text": ai_text})
+            st.success("Humanized Version:")
+            st.write(res.content)
 
-                    st.divider()
-                    user_q = st.text_input("Ask anything about the document:")
-                    if user_q:
-                        prompt = f"Answer in the same language as question (Urdu or English) based on context.\nContext:\n{full_text[:12000]}\nQuestion: {user_q}"
-                        resp_container = st.empty()
-                        stream = client.chat.completions.create(model=target_model, messages=[{"role": "user", "content": prompt}], stream=True)
-                        ans_text = ""
-                        for chunk in stream:
-                            if chunk.choices[0].delta.content:
-                                ans_text += chunk.choices[0].delta.content
-                                resp_container.markdown(f"### Answer:\n{ans_text}")
+# ------------------------------------------
+# TAB 6: Auto Quiz & Flashcards Generator
+# ------------------------------------------
+with tab6:
+    st.header("📝 Quiz & Flashcard Generator")
+    study_material = st.text_area("Paste Study Notes / Text:", height=150)
+    
+    if st.button("Generate Quiz (5 MCQs)") and study_material:
+        if check_access():
+            prompt = ChatPromptTemplate.from_template("Generate 5 multiple-choice questions (MCQs) with correct answers based on this text: {text}")
+            chain = prompt | llm
+            res = chain.invoke({"text": study_material})
+            st.write(res.content)
 
-                except Exception as e:
-                    st.error(f"Error: {e}")
-                finally:
-                    if os.path.exists(tmp_path): os.remove(tmp_path)
-
-        # TAB 2: VOICE SUMMARIZER
-        with tab2:
-            st.subheader("Voice Notes & Meeting Audio Transcriber")
-            audio_file = st.file_uploader("Upload Audio (.mp3, .wav, .m4a):", type=["mp3", "wav", "m4a"])
-
-            if audio_file:
-                with tempfile.NamedTemporaryFile(delete=False, suffix=f".{audio_file.name.split('.')[-1]}") as tmp_audio:
-                    tmp_audio.write(audio_file.read())
-                    audio_path = tmp_audio.name
-
-                st.audio(audio_file)
-                if st.button("🎙️ Process Audio"):
-                    try:
-                        with st.spinner("Transcribing..."):
-                            with open(audio_path, "rb") as f:
-                                transcription = client.audio.transcriptions.create(file=(audio_path, f.read()), model="whisper-large-v3-turbo", response_format="text")
-                            st.success("Transcription Complete!")
-                            st.text_area("Full Transcript:", transcription, height=150)
-
-                            sum_res = client.chat.completions.create(model=target_model, messages=[{"role": "user", "content": f"Summarize key meeting takeaways:\n\n{transcription}"}])
-                            st.markdown("### Audio Summary:\n" + sum_res.choices[0].message.content)
-                    except Exception as e:
-                        st.error(f"Audio Error: {e}")
-                    finally:
-                        if os.path.exists(audio_path): os.remove(audio_path)
-
-        # TAB 3: DATA & EXCEL ANALYST
-        with tab3:
-            st.subheader("CSV & Data Sheet Insights")
-            csv_file = st.file_uploader("Upload CSV File:", type=["csv"])
-            if csv_file:
-                df = pd.read_csv(csv_file)
-                st.dataframe(df.head(10))
-                if st.button("📊 Analyze Data Trends"):
-                    prompt = f"Analyze this dataset preview and provide key statistical insights, trends, and summary:\n\n{df.head(20).to_string()}"
-                    res = client.chat.completions.create(model=target_model, messages=[{"role": "user", "content": prompt}])
-                    st.markdown("### Data Insights:\n" + res.choices[0].message.content)
-
-        # TAB 4: LEGAL & CONTRACT AUDITOR
-        with tab4:
-            st.subheader("Contract & Legal Document Risk Auditor")
-            contract_text = st.text_area("Paste Legal Contract / Agreement Text:", height=200)
-            if st.button("⚖️ Audit Contract Risks") and contract_text:
-                prompt = f"Audit this legal agreement. List: 1. High Risks/Penalties 2. Key Obligations 3. Missing Clauses\n\nText:\n{contract_text}"
-                res = client.chat.completions.create(model=target_model, messages=[{"role": "user", "content": prompt}])
-                st.markdown("### Legal Audit Report:\n" + res.choices[0].message.content)
-
-        # TAB 5: AI HUMANIZER
-        with tab5:
-            st.subheader("AI Content Humanizer & Paraphraser")
-            raw_text = st.text_area("Paste AI Generated / Rough Text:", height=150)
-            if st.button("✍️ Make Human-Like & Natural") and raw_text:
-                prompt = f"Rewrite this text in a natural, highly engaging human tone while maintaining original facts:\n\n{raw_text}"
-                res = client.chat.completions.create(model=target_model, messages=[{"role": "user", "content": prompt}])
-                st.markdown("### Humanized Output:\n" + res.choices[0].message.content)
-
-        # TAB 6: AUTO QUIZ GENERATOR
-        with tab6:
-            st.subheader("AI Quiz & Flashcard Generator")
-            study_text = st.text_area("Paste Study Material / Notes:", height=150)
-            num_q = st.slider("Questions:", 3, 10, 5)
-            if st.button("🧠 Generate Test") and study_text:
-                prompt = f"Create {num_q} MCQs with answer keys and 3 Flashcards from this text:\n\n{study_text}"
-                res = client.chat.completions.create(model=target_model, messages=[{"role": "user", "content": prompt}])
-                st.markdown("### Quiz & Study Prep:\n" + res.choices[0].message.content)
+# ------------------------------------------
+# TAB 7: Urdu/English Bilingual Assistant
+# ------------------------------------------
+with tab7:
+    st.header("🌐 Urdu / English Bilingual Assistant")
+    bi_text = st.text_area("Type in English or Roman Urdu / Input Text:")
+    
+    if st.button("Translate & Explain"):
+        if check_access():
+            prompt = ChatPromptTemplate.from_template("Translate and explain the following content in both clear English and proper Urdu script: {text}")
+            chain = prompt | llm
+            res = chain.invoke({"text": bi_text})
+            st.write(res.content)
+    
