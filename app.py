@@ -7,19 +7,20 @@ from langchain_groq import ChatGroq
 st.set_page_config(page_title="AI PDF Assistant")
 st.title("📄 AI PDF Research Assistant")
 
-# Secrets check
+# Fetch API Key from Streamlit Secrets
 api_key = st.secrets.get("GROQ_API_KEY")
 
 uploaded_file = st.file_uploader("Upload a PDF document", type=["pdf"])
 
 if uploaded_file:
     if not api_key:
-        st.error("Secrets mein 'GROQ_API_KEY' nahi mili. Streamlit Secrets check karein.")
+        st.error("API Key Secrets mein nahi mili. Kripya Streamlit Secrets check karein.")
     else:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
             tmp_file.write(uploaded_file.read())
             tmp_path = tmp_file.name
 
+        # Load PDF Text
         loader = PyPDFLoader(tmp_path)
         docs = loader.load()
         pdf_text = "\n".join([doc.page_content for doc in docs])
@@ -30,8 +31,9 @@ if uploaded_file:
 
         if user_question:
             try:
+                # Using the stable llama3-70b-8192 model string
                 llm = ChatGroq(
-                    model="llama-3.3-70b-versatile",
+                    model="llama3-70b-8192",
                     groq_api_key=api_key
                 )
                 prompt = f"Context from document:\n{pdf_text[:6000]}\n\nQuestion: {user_question}"
@@ -43,6 +45,7 @@ if uploaded_file:
                 st.error(f"Error detail: {e}")
 
         os.remove(tmp_path)
+        
         
             
     
