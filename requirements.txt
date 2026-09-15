@@ -1,8 +1,9 @@
 streamlit
-langchain-groq
 langchain
+langchain-community
+langchain-groq
 PyPDF2
-requests
+
 
 
 
