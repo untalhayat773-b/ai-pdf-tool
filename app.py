@@ -1,4 +1,5 @@
 import streamlit as st
+import requests
 from PyPDF2 import PdfReader
 from groq import Groq
 
@@ -25,28 +26,47 @@ st.markdown('<div class="main-header">📑 AI Productivity Workspace Pro</div>',
 st.markdown('<div class="sub-header">Your All-in-One Intelligent Document Assistant & Productivity Suite</div>', unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# Sidebar - License Verification, Lemon Squeezy & API Key Setup
+# Sidebar - Lemon Squeezy $5 Verification System
 # ---------------------------------------------------------
-st.sidebar.title("⚙️ Workspace Settings")
+st.sidebar.title("💎 Pro Subscription ($5/mo)")
 
-# 1. Groq API Key Setup (Sidebar + Secrets Fallback)
-api_key = st.sidebar.text_input("Enter Groq API Key (Optional):", type="password", help="Leave blank if system default key is configured in Secrets.")
+# Lemon Squeezy Realtime License Verification
+def verify_lemon_squeezy_license(license_key):
+    try:
+        url = "https://api.lemonsqueezy.com/v1/licenses/validate"
+        headers = {"Accept": "application/json"}
+        data = {"license_key": license_key}
+        response = requests.post(url, headers=headers, data=data)
+        res_data = response.json()
+        
+        if res_data.get("valid") is True or res_data.get("license_key", {}).get("status") in ["active", "subscribed"]:
+            return True, "✅ Pro Subscription Verified!"
+        else:
+            return False, f"❌ Invalid Key: {res_data.get('error', 'Key not active')}"
+    except Exception as e:
+        return False, f"Verification Error: {str(e)}"
 
-if not api_key and "GROQ_API_KEY" in st.secrets:
-    api_key = st.secrets["GROQ_API_KEY"]
+# License Input Box
+user_license = st.sidebar.text_input("Enter Lemon Squeezy License Key:", type="password")
 
-# 2. Lemon Squeezy License Key Verification System
-st.sidebar.markdown("---")
-st.sidebar.subheader("👑 Pro Subscription & License")
+is_verified = False
 
-license_key = st.sidebar.text_input("Enter Lemon Squeezy License Key:", type="password", help="Enter the license key received after purchase.")
+if user_license:
+    valid, msg = verify_lemon_squeezy_license(user_license)
+    if valid:
+        st.sidebar.success(msg)
+        is_verified = True
+    else:
+        st.sidebar.error(msg)
+else:
+    st.sidebar.info("Please enter your License Key to access Pro features.")
 
-# Lemon Squeezy Product Checkout Button
+# $5 Buy Button Link
 st.sidebar.markdown(
     """
     <a href="https://lemonsqueezy.com" target="_blank">
-        <button style="width:100%; background-color:#10B981; color:white; border:none; padding:10px; border-radius:8px; font-weight:bold; cursor:pointer; margin-top:5px;">
-            🛒 Buy Pro License ($9.99/mo)
+        <button style="width:100%; background-color:#10B981; color:white; border:none; padding:10px; border-radius:8px; font-weight:bold; cursor:pointer; margin-top:10px;">
+            🚀 Subscribe Now ($5/month)
         </button>
     </a>
     """, 
@@ -54,33 +74,40 @@ st.sidebar.markdown(
 )
 
 st.sidebar.markdown("---")
-st.sidebar.caption("⚡ Powered by Llama 3.1 & Groq AI Engine")
+st.sidebar.caption("⚡ Powered by Llama 3.1 & Groq AI")
 
-# Verification Check
-if not api_key:
-    st.info("👈 Please enter your **Groq API Key** in the sidebar or configure `GROQ_API_KEY` in Streamlit Secrets to start.")
+# Access Control
+if not is_verified:
+    st.warning("🔒 **Access Locked:** Please enter a valid **Lemon Squeezy License Key** ($5/mo) in the sidebar to unlock the AI Workspace.")
     st.stop()
 
-# Initialize Client
+# ---------------------------------------------------------
+# Groq Backend Setup
+# ---------------------------------------------------------
+api_key = st.secrets.get("GROQ_API_KEY", None)
+
+if not api_key:
+    st.error("⚠️ Backend Error: `GROQ_API_KEY` missing in Streamlit Secrets.")
+    st.stop()
+
 client = Groq(api_key=api_key)
 
-# Helper function to call Groq AI
 def ask_groq(prompt_text, context_text):
     try:
         response = client.chat.completions.create(
             messages=[
                 {
                     "role": "system", 
-                    "content": "You are an expert AI document assistant. Answer accurately based on context. Natively support full Urdu and English responses based on the user question."
+                    "content": "You are an expert AI document assistant. Answer accurately based on context. Support Urdu and English natively."
                 },
-                {"role": "user", "content": f"Context:\n{context_text[:12000]}\n\nTask/Question:\n{prompt_text}"}
+                {"role": "user", "content": f"Context:\n{context_text[:12000]}\n\nTask:\n{prompt_text}"}
             ],
             model="llama-3.1-8b-instant",
             temperature=0.3,
         )
         return response.choices[0].message.content
     except Exception as e:
-        return f"Error processing document: {str(e)}"
+        return f"Error: {str(e)}"
 
 # ---------------------------------------------------------
 # Main App Logic (7 Tools Suite)
@@ -88,7 +115,7 @@ def ask_groq(prompt_text, context_text):
 uploaded_file = st.file_uploader("📂 Upload your PDF Document to get started", type=["pdf"])
 
 if uploaded_file is not None:
-    with st.spinner("Extracting text from PDF..."):
+    with st.spinner("Processing PDF Document..."):
         pdf_reader = PdfReader(uploaded_file)
         text = ""
         for page in pdf_reader.pages:
@@ -97,7 +124,7 @@ if uploaded_file is not None:
                 text += extracted
 
     if not text.strip():
-        st.error("Could not extract readable text from this PDF. Please make sure it's not a scanned image-only PDF.")
+        st.error("Could not extract readable text from this PDF.")
         st.stop()
 
     st.success(f"✅ Document Successfully Loaded! ({len(pdf_reader.pages)} Pages Processed)")
@@ -118,7 +145,7 @@ if uploaded_file is not None:
     # Tool 1: Chat Q&A
     with tab1:
         st.markdown("### 💬 Ask Anything About Your Document")
-        user_q = st.text_input("Type your question here (Supports Urdu & English):", placeholder="e.g. Is document ka main summary kya hai?")
+        user_q = st.text_input("Type your question here (Supports Urdu & English):")
         if st.button("Get Answer", key="btn1") and user_q:
             with st.spinner("Analyzing document..."):
                 res = ask_groq(f"Answer accurately in the same language as asked: {user_q}", text)
@@ -126,7 +153,7 @@ if uploaded_file is not None:
 
     # Tool 2: Summarizer
     with tab2:
-        st.markdown("### 📝 Instant Summary Generator")
+        st.markdown("### 📝 Summary Generator")
         s_type = st.radio("Select Summary Detail Level:", ["Brief Overview", "Comprehensive Deep-Dive"])
         if st.button("Generate Summary", key="btn2"):
             with st.spinner("Summarizing..."):
@@ -152,8 +179,8 @@ if uploaded_file is not None:
 
     # Tool 5: Quiz Generator
     with tab5:
-        st.markdown("### ❓ AI Quiz & Test Generator")
-        if st.button("Generate Multiple Choice Quiz", key="btn5"):
+        st.markdown("### ❓ AI Quiz Generator")
+        if st.button("Generate Quiz", key="btn5"):
             with st.spinner("Generating Quiz..."):
                 res = ask_groq("Create 5 multiple choice questions (MCQs) with 4 options each, and provide correct answers at the bottom.", text)
                 st.write(res)
@@ -163,7 +190,7 @@ if uploaded_file is not None:
         st.markdown("### 📊 Executive Business Briefing")
         if st.button("Generate Executive Brief", key="btn6"):
             with st.spinner("Compiling executive brief..."):
-                res = ask_groq("Write a formal Executive Brief containing: 1. Primary Objective/Problem, 2. Key Findings, 3. Strategic Recommendations.", text)
+                res = ask_groq("Write a formal Executive Brief: 1. Objective, 2. Key Findings, 3. Recommendations.", text)
                 st.write(res)
 
     # Tool 7: Term Extractor
@@ -171,9 +198,8 @@ if uploaded_file is not None:
         st.markdown("### 🔍 Technical Keywords & Concepts")
         if st.button("Extract Key Terms", key="btn7"):
             with st.spinner("Extracting terminology..."):
-                res = ask_groq("Extract top 10 important technical keywords/concepts from text along with 1-sentence concise definitions for each.", text)
+                res = ask_groq("Extract top 10 important technical terms along with 1-sentence definitions.", text)
                 st.write(res)
-
 else:
     st.info("👆 Please upload a PDF document above to activate the 7 AI Productivity Tools.")
-    
+             
